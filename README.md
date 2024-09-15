@@ -6,7 +6,7 @@ vault2file is a command-line tool that reads YAML configuration files, fetches s
 
 ### Prerequisites
 
-- Go 1.16 or later
+- Go 1.22 or later
 - Access to a HashiCorp Vault instance
 
 ### Building from source
@@ -43,26 +43,25 @@ If no input file or directory is specified, vault2file will process all .yml fil
 ### Flags
 
 - `-o, --output string`: Output directory for ENV files (default ".")
-- `-v, --vault string`: Vault server address (default is the VAULT_ADDR environment variable)
 
 ### Examples
 
 1. Process a single file:
 
    ```sh
-   vault2file -o /path/to/output/dir -v http://vault:8200 /path/to/input/file.yml
+   vault2file -o /path/to/output/dir /path/to/input/file.yml
    ```
 
 2. Process all .yml files in a directory:
 
    ```sh
-   vault2file -o /path/to/output/dir -v http://vault:8200 /path/to/input/dir
+   vault2file -o /path/to/output/dir /path/to/input/dir
    ```
 
 3. Process files in the current directory:
 
    ```sh
-   vault2file -o /path/to/output/dir -v http://vault:8200
+   vault2file -o /path/to/output/dir
    ```
 
 ### YAML File Format
@@ -92,7 +91,7 @@ To use vault2file in a Docker environment:
    set -e
 
    # Run vault2file
-   /app/vault2file -o /secrets -v $VAULT_ADDR /secrets
+   /app/vault2file -o /secrets /secrets
 
    # Source all .env files
    for f in /secrets/*.env; do
