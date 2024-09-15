@@ -14,6 +14,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+var Version = "dev" // this will be overwritten by the build process
+
 type Config struct {
 	Secrets map[string]string `yaml:"secrets"`
 }
@@ -21,7 +23,6 @@ type Config struct {
 var (
 	input     string
 	outputDir string
-	vaultAddr string
 )
 
 var rootCmd = &cobra.Command{
@@ -29,12 +30,19 @@ var rootCmd = &cobra.Command{
 	Short: "Transfer secrets from Vault to files",
 	Long:  `vault2file reads YAML files, fetches secrets from Vault, and generates corresponding ENV files.`,
 	Args:  cobra.MaximumNArgs(1),
-	RunE:  run,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			cmd.Help()
+			os.Exit(0)
+		}
+		return nil
+	},
+	RunE:    run,
+	Version: Version,
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&outputDir, "output", "o", ".", "Output directory for ENV files")
-	rootCmd.PersistentFlags().StringVarP(&vaultAddr, "vault", "v", os.Getenv("VAULT_ADDR"), "Vault server address")
 }
 
 func main() {
@@ -55,10 +63,10 @@ func run(cmd *cobra.Command, args []string) error {
 		vault.WithEnvironment(),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error creating Vault client: %v", err)
 	}
 
-	// Check if input is a file or directory
+	// check if input is a file or directory
 	fileInfo, err := os.Stat(input)
 	if err != nil {
 		log.Fatalf("Error accessing input: %v", err)
@@ -66,8 +74,8 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if fileInfo.IsDir() {
-		// Process directory
-		err = filepath.Walk(input, func(path string, info os.FileInfo, err error) error {
+		// process directory
+		if err = filepath.Walk(input, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -78,22 +86,22 @@ func run(cmd *cobra.Command, args []string) error {
 				}
 			}
 			return nil
-		})
-		if err != nil {
+		}); err != nil {
 			log.Fatalf("Error walking through directory: %v", err)
 			return err
 		}
-	} else {
-		// Process single file
-		if !strings.HasSuffix(input, ".yml") {
-			log.Fatalf("Input file must have .yml extension")
-			return fmt.Errorf("input file must have .yml extension")
-		}
-		err := processFile(client, input)
-		if err != nil {
-			log.Fatalf("Error processing %s: %v", input, err)
-			return err
-		}
+
+		return nil
+	}
+
+	// process single file
+	if !strings.HasSuffix(input, ".yml") || strings.HasSuffix(input, ".yaml") {
+		return fmt.Errorf("input file must have .yml extension")
+	}
+
+	if err := processFile(client, input); err != nil {
+		log.Fatalf("Error processing %s: %v", input, err)
+		return err
 	}
 
 	return nil
@@ -102,20 +110,20 @@ func run(cmd *cobra.Command, args []string) error {
 func processFile(client *vault.Client, inputPath string) error {
 	ctx := context.Background()
 
-	// Read YAML file
+	// read YAML file
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("error reading file: %v", err)
 	}
 
-	// Parse YAML
+	// parse YAML
 	var config Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return fmt.Errorf("error parsing YAML: %v", err)
 	}
 
-	// Create output file
+	// create output file
 	baseName := filepath.Base(inputPath)
 	outputName := strings.TrimSuffix(baseName, filepath.Ext(baseName)) + ".env"
 	outputPath := filepath.Join(outputDir, outputName)
@@ -125,16 +133,16 @@ func processFile(client *vault.Client, inputPath string) error {
 	}
 	defer envFile.Close()
 
-	// Process each secret
+	// process each secret
 	for key, value := range config.Secrets {
 		if !strings.HasPrefix(value, "vault://") {
-			// Write non-Vault values directly, but quoted
+			// write non-Vault values directly, but quoted
 			quotedValue := strconv.Quote(value)
 			fmt.Fprintf(envFile, "%s=%s\n", key, quotedValue)
 			continue
 		}
 
-		// Extract path and key from Vault URL
+		// extract path and key from Vault URL
 		parts := strings.SplitN(strings.TrimPrefix(value, "vault://"), "#", 2)
 		if len(parts) != 2 {
 			log.Printf("Invalid Vault URL for %s: %s", key, value)
@@ -142,7 +150,7 @@ func processFile(client *vault.Client, inputPath string) error {
 		}
 		path, envKey := parts[0], parts[1]
 
-		// Extract mount path from path
+		// extract mount path from path
 		parts = strings.SplitN(path, "/", 2)
 		if len(parts) != 2 {
 			log.Printf("Invalid path for %s: %s", key, path)
@@ -151,16 +159,14 @@ func processFile(client *vault.Client, inputPath string) error {
 
 		mountPath, path := parts[0], parts[1]
 
-		// Fetch secret from Vault
+		// fetch secret from Vault
 		secret, err := client.Secrets.KvV2Read(ctx, path, vault.WithMountPath(mountPath))
 		if err != nil {
 			log.Printf("Failed to read secret from Vault for %s: %v", key, err)
 			continue
 		}
 
-		log.Printf("Fetched secret %v", secret)
-
-		// Write to ENV file
+		// write to ENV file
 		if secretValue, ok := secret.Data.Data[envKey]; ok {
 			quotedValue := strconv.Quote(fmt.Sprintf("%v", secretValue))
 			fmt.Fprintf(envFile, "%s=%s\n", key, quotedValue)

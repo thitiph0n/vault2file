@@ -9,24 +9,26 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.22'
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
 
-    - name: Build
-      run: go build -v -o vault2file ./...
+      - name: Get the version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-    - name: Test
-      run: go test -v ./...
+      - name: Build
+        run: |
+          go build -v -o vault2file -ldflags="-X 'main.Version=${{ steps.get_version.outputs.VERSION }}'" ./...
 
-    - name: Release
-      uses: ncipollo/release-action@v1
-      with:
-        artifacts: "vault2file"
-        token: ${{ secrets.GITHUB_TOKEN }}
-        draft: false
-        prerelease: false
-        generateReleaseNotes: true
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: 'vault2file'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
