@@ -53,10 +53,16 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Prepare artifacts for release
+        run: |
+          mkdir -p release
+          cp vault2file-linux-amd64/vault2file-linux-amd64 release/
+          cp vault2file-darwin-arm64/vault2file-darwin-arm64 release/
+
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: 'vault2file-linux-amd64/vault2file-linux-amd64,vault2file-darwin-arm64/vault2file-darwin-arm64'
+          artifacts: 'release/*'
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
