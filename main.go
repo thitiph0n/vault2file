@@ -145,16 +145,18 @@ func processFile(client *vault.Client, inputPath string) error {
 		// extract path and key from Vault URL
 		parts := strings.SplitN(strings.TrimPrefix(value, "vault://"), "#", 2)
 		if len(parts) != 2 {
-			log.Printf("Invalid Vault URL for %s: %s", key, value)
-			continue
+			errMsg := fmt.Sprintf("Invalid Vault URL for %s: %s", key, value)
+			log.Print(errMsg)
+			return fmt.Errorf(errMsg)
 		}
 		path, envKey := parts[0], parts[1]
 
 		// extract mount path from path
 		parts = strings.SplitN(path, "/", 2)
 		if len(parts) != 2 {
-			log.Printf("Invalid path for %s: %s", key, path)
-			continue
+			errMsg := fmt.Sprintf("Invalid path for %s: %s", key, path)
+			log.Print(errMsg)
+			return fmt.Errorf(errMsg)
 		}
 
 		mountPath, path := parts[0], parts[1]
@@ -162,8 +164,9 @@ func processFile(client *vault.Client, inputPath string) error {
 		// fetch secret from Vault
 		secret, err := client.Secrets.KvV2Read(ctx, path, vault.WithMountPath(mountPath))
 		if err != nil {
-			log.Printf("Failed to read secret from Vault for %s: %v", key, err)
-			continue
+			errMsg := fmt.Sprintf("Failed to read secret from Vault for %s: %v", key, err)
+			log.Print(errMsg)
+			return fmt.Errorf(errMsg)
 		}
 
 		// write to ENV file
@@ -173,7 +176,9 @@ func processFile(client *vault.Client, inputPath string) error {
 			continue
 		}
 
-		log.Printf("Failed to find %s in Vault secret", envKey)
+		errMsg := fmt.Sprintf("Failed to find key %s in Vault secret at %s/%s", envKey, mountPath, path)
+		log.Print(errMsg)
+		return fmt.Errorf(errMsg)
 	}
 
 	log.Printf("Created %s successfully", outputPath)

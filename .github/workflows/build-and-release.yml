@@ -8,6 +8,15 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output_name: vault2file-linux-amd64
+          - goos: darwin
+            goarch: arm64
+            output_name: vault2file-darwin-arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -21,13 +30,33 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -v -o vault2file -ldflags="-X 'main.Version=${{ steps.get_version.outputs.VERSION }}'" ./...
+          go build -v -o ${{ matrix.output_name }} -ldflags="-X 'main.Version=${{ steps.get_version.outputs.VERSION }}'" ./...
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.output_name }}
+          path: ${{ matrix.output_name }}
+
+  release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Get the version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: 'vault2file'
+          artifacts: 'vault2file-linux-amd64/vault2file-linux-amd64,vault2file-darwin-arm64/vault2file-darwin-arm64'
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
